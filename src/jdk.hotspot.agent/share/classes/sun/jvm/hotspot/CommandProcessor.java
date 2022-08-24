@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2005, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2005, 2022, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -279,7 +279,7 @@ public class CommandProcessor {
     }
 
     void quote(String s) {
-        if (s.indexOf(" ") == -1) {
+        if (!s.contains(" ")) {
             out.print(s);
         } else {
             out.print("\"");
@@ -342,7 +342,7 @@ public class CommandProcessor {
 
 
     Address lookup(String symbol) {
-        if (symbol.indexOf("::") != -1) {
+        if (symbol.contains("::")) {
             String[] parts = symbol.split("::");
             StringBuilder mangled = new StringBuilder("__1c");
             for (int i = 0; i < parts.length; i++) {
@@ -581,8 +581,8 @@ public class CommandProcessor {
                     // dump replay data
 
                     CodeBlob cb = VM.getVM().getCodeCache().findBlob(a);
-                    if (cb != null && (cb instanceof NMethod)) {
-                        ((NMethod)cb).dumpReplayData(out);
+                    if (cb instanceof NMethod nMethod) {
+                        nMethod.dumpReplayData(out);
                         return;
                     }
                     // assume it is Metadata
@@ -688,7 +688,7 @@ public class CommandProcessor {
                 }
             }
         },
-        // "whatis" is just an alias for "findpc". It's kept around for compatiblity reasons.
+        // "whatis" is just an alias for "findpc". It's kept around for compatibility reasons.
         new Command("whatis", "whatis address", false) {
             public void doit(Tokens t) {
                 if (t.countTokens() != 1) {
@@ -1671,19 +1671,54 @@ public class CommandProcessor {
                 }
             }
         },
+        new Command("threadcontext", "threadcontext [-v] { -a | id }", false) {
+            public void doit(Tokens t) {
+                boolean verbose = false;
+                if (t.countTokens() == 2) {
+                    if (t.nextToken().equals("-v")) {
+                        verbose = true;
+                    } else {
+                        usage();
+                        return;
+                    }
+                }
+                if (t.countTokens() != 1) {
+                    usage();
+                    return;
+                }
+                String id = t.nextToken();
+                Threads threads = VM.getVM().getThreads();
+                boolean all = id.equals("-a");
+                for (int i = 0; i < threads.getNumberOfThreads(); i++) {
+                    JavaThread thread = threads.getJavaThreadAt(i);
+                    ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                    thread.printThreadIDOn(new PrintStream(bos));
+                    if (all || bos.toString().equals(id)) {
+                        out.format("Thread \"%s\" id=%s Address=%s\n",
+                                   thread.getThreadName(), bos.toString(), thread.getAddress());
+                        thread.printThreadContextOn(out, verbose);
+                        out.println(" ");
+                        if (!all) return;
+                    }
+                }
+                if (!all) {
+                    out.println("Couldn't find thread " + id);
+                }
+            }
+        },
         new Command("thread", "thread { -a | id }", false) {
             public void doit(Tokens t) {
                 if (t.countTokens() != 1) {
                     usage();
                 } else {
-                    String name = t.nextToken();
+                    String id = t.nextToken();
                     Threads threads = VM.getVM().getThreads();
-                    boolean all = name.equals("-a");
+                    boolean all = id.equals("-a");
                     for (int i = 0; i < threads.getNumberOfThreads(); i++) {
                         JavaThread thread = threads.getJavaThreadAt(i);
                         ByteArrayOutputStream bos = new ByteArrayOutputStream();
                         thread.printThreadIDOn(new PrintStream(bos));
-                        if (all || bos.toString().equals(name)) {
+                        if (all || bos.toString().equals(id)) {
                             out.println("Thread " + bos.toString() + " Address " + thread.getAddress());
                             thread.printInfoOn(out);
                             out.println(" ");

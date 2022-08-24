@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2022, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -29,13 +29,11 @@
 #include "code/vmreg.hpp"
 #include "interpreter/bytecodeTracer.hpp"
 #include "interpreter/linkResolver.hpp"
-#include "memory/allocation.hpp"
+#include "memory/allStatic.hpp"
 #include "memory/resourceArea.hpp"
-#include "utilities/hashtable.hpp"
 #include "utilities/macros.hpp"
 
 class AdapterHandlerEntry;
-class AdapterHandlerTable;
 class AdapterFingerPrint;
 class vframeStream;
 
@@ -282,7 +280,7 @@ class SharedRuntime: AllStatic {
   static jlong get_java_tid(Thread* thread);
 
 
-  // used by native wrappers to reenable yellow if overflow happened in native code
+  // used by native wrappers to re-enable yellow if overflow happened in native code
   static void reguard_yellow_pages();
 
   // Fill in the "X cannot be cast to a Y" message for ClassCastException
@@ -507,19 +505,6 @@ class SharedRuntime: AllStatic {
 
   static address handle_unsafe_access(JavaThread* thread, address next_pc);
 
-#ifdef COMPILER2
-  static RuntimeStub* make_native_invoker(address call_target,
-                                          int shadow_space_bytes,
-                                          const GrowableArray<VMReg>& input_registers,
-                                          const GrowableArray<VMReg>& output_registers);
-#endif
-
-  static void compute_move_order(const BasicType* in_sig_bt,
-                                 int total_in_args, const VMRegPair* in_regs,
-                                 int total_out_args, VMRegPair* out_regs,
-                                 GrowableArray<int>& arg_order,
-                                 VMRegPair tmp_vmreg);
-
 #ifndef PRODUCT
 
   // Collect and print inline cache miss statistics
@@ -624,8 +609,7 @@ class SharedRuntime: AllStatic {
 // used by the adapters.  The code generation happens here because it's very
 // similar to what the adapters have to do.
 
-class AdapterHandlerEntry : public BasicHashtableEntry<mtCode> {
-  friend class AdapterHandlerTable;
+class AdapterHandlerEntry : public CHeapObj<mtCode> {
   friend class AdapterHandlerLibrary;
 
  private:
@@ -642,21 +626,20 @@ class AdapterHandlerEntry : public BasicHashtableEntry<mtCode> {
   int            _saved_code_length;
 #endif
 
-  void init(AdapterFingerPrint* fingerprint, address i2c_entry, address c2i_entry, address c2i_unverified_entry, address c2i_no_clinit_check_entry) {
-    _fingerprint = fingerprint;
-    _i2c_entry = i2c_entry;
-    _c2i_entry = c2i_entry;
-    _c2i_unverified_entry = c2i_unverified_entry;
-    _c2i_no_clinit_check_entry = c2i_no_clinit_check_entry;
+  AdapterHandlerEntry(AdapterFingerPrint* fingerprint, address i2c_entry, address c2i_entry,
+                      address c2i_unverified_entry,
+                      address c2i_no_clinit_check_entry) :
+    _fingerprint(fingerprint),
+    _i2c_entry(i2c_entry),
+    _c2i_entry(c2i_entry),
+    _c2i_unverified_entry(c2i_unverified_entry),
+    _c2i_no_clinit_check_entry(c2i_no_clinit_check_entry)
 #ifdef ASSERT
-    _saved_code_length = 0;
+    , _saved_code_length(0)
 #endif
-  }
+  { }
 
-  void deallocate();
-
-  // should never be used
-  AdapterHandlerEntry();
+  ~AdapterHandlerEntry();
 
  public:
   address get_i2c_entry()                  const { return _i2c_entry; }
@@ -668,10 +651,6 @@ class AdapterHandlerEntry : public BasicHashtableEntry<mtCode> {
   void relocate(address new_base);
 
   AdapterFingerPrint* fingerprint() const { return _fingerprint; }
-
-  AdapterHandlerEntry* next() {
-    return (AdapterHandlerEntry*)BasicHashtableEntry<mtCode>::next();
-  }
 
 #ifdef ASSERT
   // Used to verify that code generated for shared adapters is equivalent
@@ -687,7 +666,6 @@ class AdapterHandlerLibrary: public AllStatic {
   friend class SharedRuntime;
  private:
   static BufferBlob* _buffer; // the temporary code buffer in CodeCache
-  static AdapterHandlerTable* _adapters;
   static AdapterHandlerEntry* _abstract_method_handler;
   static AdapterHandlerEntry* _no_arg_handler;
   static AdapterHandlerEntry* _int_arg_handler;

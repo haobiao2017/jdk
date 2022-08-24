@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1996, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1996, 2022, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -150,15 +150,20 @@ public class InflaterInputStream extends FilterInputStream {
         }
         try {
             int n;
-            while ((n = inf.inflate(b, off, len)) == 0) {
+            do {
                 if (inf.finished() || inf.needsDictionary()) {
                     reachEOF = true;
                     return -1;
                 }
-                if (inf.needsInput()) {
+                if (inf.needsInput() && !inf.hasPendingOutput()) {
+                    // Even if needsInput() is true, the native inflater may have some
+                    // buffered data which couldn't fit in to the output buffer during the
+                    // last call to inflate. Consume that buffered data first before calling
+                    // fill() to avoid an EOF error if no more input is available and the
+                    // next call to inflate will finish the inflation.
                     fill();
                 }
-            }
+            } while ((n = inf.inflate(b, off, len)) == 0);
             return n;
         } catch (DataFormatException e) {
             String s = e.getMessage();
@@ -189,8 +194,6 @@ public class InflaterInputStream extends FilterInputStream {
         }
     }
 
-    private byte[] b = new byte[512];
-
     /**
      * Skips specified number of bytes of uncompressed data.
      * @param n the number of bytes to skip
@@ -205,6 +208,7 @@ public class InflaterInputStream extends FilterInputStream {
         ensureOpen();
         int max = (int)Math.min(n, Integer.MAX_VALUE);
         int total = 0;
+        byte[] b = new byte[Math.min(max, 512)];
         while (total < max) {
             int len = max - total;
             if (len > b.length) {
@@ -265,21 +269,22 @@ public class InflaterInputStream extends FilterInputStream {
     /**
      * Marks the current position in this input stream.
      *
-     * <p> The {@code mark} method of {@code InflaterInputStream}
+     * @implSpec The {@code mark} method of {@code InflaterInputStream}
      * does nothing.
      *
      * @param   readlimit   the maximum limit of bytes that can be read before
      *                      the mark position becomes invalid.
      * @see     java.io.InputStream#reset()
      */
-    public synchronized void mark(int readlimit) {
+    @Override
+    public void mark(int readlimit) {
     }
 
     /**
      * Repositions this stream to the position at the time the
      * {@code mark} method was last called on this input stream.
      *
-     * <p> The method {@code reset} for class
+     * @implSpec The method {@code reset} for class
      * {@code InflaterInputStream} does nothing except throw an
      * {@code IOException}.
      *
@@ -287,7 +292,8 @@ public class InflaterInputStream extends FilterInputStream {
      * @see     java.io.InputStream#mark(int)
      * @see     java.io.IOException
      */
-    public synchronized void reset() throws IOException {
+    @Override
+    public void reset() throws IOException {
         throw new IOException("mark/reset not supported");
     }
 }

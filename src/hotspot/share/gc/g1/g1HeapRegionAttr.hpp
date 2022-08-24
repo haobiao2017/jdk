@@ -32,13 +32,7 @@
 // lookups for that information all over the place.
 struct G1HeapRegionAttr {
 public:
-#if defined(_M_ARM64)&& defined(_MSC_VER) && _MSC_VER <= 1927
-  // workaround for MSCV ARM64 bug
-  // https://developercommunity.visualstudio.com/content/problem/1079221/arm64-bad-code-generation-around-signed-char-arith.html
-  typedef int32_t region_type_t;
-#else
   typedef int8_t region_type_t;
-#endif
   // remset_is_tracked_t is essentially bool, but we need precise control
   // on the size, and sizeof(bool) is implementation specific.
   typedef uint8_t remset_is_tracked_t;
@@ -146,6 +140,10 @@ class G1HeapRegionAttrBiasedMappedArray : public G1BiasedMappedArray<G1HeapRegio
 
   void clear_humongous(uintptr_t index) {
     get_ref_by_index(index)->clear_humongous();
+  }
+
+  bool is_humongous(uintptr_t index) {
+    return get_ref_by_index(index)->is_humongous();
   }
 
   void set_remset_is_tracked(uintptr_t index, bool remset_is_tracked) {

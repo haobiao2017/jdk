@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2000, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2000, 2022, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -319,7 +319,7 @@ void LIR_Assembler::osr_entry() {
       // verify the interpreter's monitor has a non-null object
       {
         Label L;
-        __ cmpptr(Address(OSR_buf, slot_offset + 1*BytesPerWord), (int32_t)NULL_WORD);
+        __ cmpptr(Address(OSR_buf, slot_offset + 1*BytesPerWord), NULL_WORD);
         __ jcc(Assembler::notZero, L);
         __ stop("locked object is NULL");
         __ bind(L);
@@ -398,13 +398,6 @@ int LIR_Assembler::initial_frame_size_in_bytes() const {
 
 
 int LIR_Assembler::emit_exception_handler() {
-  // if the last instruction is a call (typically to do a throw which
-  // is coming at the end after block reordering) the return address
-  // must still point into the code area in order to avoid assertion
-  // failures when searching for the corresponding bci => add a nop
-  // (was bug 5/14/1999 - gri)
-  __ nop();
-
   // generate code for exception handler
   address handler_base = __ start_a_stub(exception_handler_size());
   if (handler_base == NULL) {
@@ -445,10 +438,10 @@ int LIR_Assembler::emit_unwind_handler() {
 
   // Fetch the exception from TLS and clear out exception related thread state
   Register thread = NOT_LP64(rsi) LP64_ONLY(r15_thread);
-  NOT_LP64(__ get_thread(rsi));
+  NOT_LP64(__ get_thread(thread));
   __ movptr(rax, Address(thread, JavaThread::exception_oop_offset()));
-  __ movptr(Address(thread, JavaThread::exception_oop_offset()), (intptr_t)NULL_WORD);
-  __ movptr(Address(thread, JavaThread::exception_pc_offset()), (intptr_t)NULL_WORD);
+  __ movptr(Address(thread, JavaThread::exception_oop_offset()), NULL_WORD);
+  __ movptr(Address(thread, JavaThread::exception_pc_offset()), NULL_WORD);
 
   __ bind(_unwind_handler_entry);
   __ verify_not_null_oop(rax);
@@ -456,7 +449,7 @@ int LIR_Assembler::emit_unwind_handler() {
     __ mov(rbx, rax);  // Preserve the exception (rbx is always callee-saved)
   }
 
-  // Preform needed unlocking
+  // Perform needed unlocking
   MonitorExitStub* stub = NULL;
   if (method()->is_synchronized()) {
     monitor_address(0, FrameMap::rax_opr);
@@ -499,13 +492,6 @@ int LIR_Assembler::emit_unwind_handler() {
 
 
 int LIR_Assembler::emit_deopt_handler() {
-  // if the last instruction is a call (typically to do a throw which
-  // is coming at the end after block reordering) the return address
-  // must still point into the code area in order to avoid assertion
-  // failures when searching for the corresponding bci => add a nop
-  // (was bug 5/14/1999 - gri)
-  __ nop();
-
   // generate code for exception handler
   address handler_base = __ start_a_stub(deopt_handler_size());
   if (handler_base == NULL) {
@@ -747,7 +733,7 @@ void LIR_Assembler::const2mem(LIR_Opr src, LIR_Opr dest, BasicType type, CodeEmi
     case T_ARRAY:
       if (c->as_jobject() == NULL) {
         if (UseCompressedOops && !wide) {
-          __ movl(as_Address(addr), (int32_t)NULL_WORD);
+          __ movl(as_Address(addr), NULL_WORD);
         } else {
 #ifdef _LP64
           __ xorptr(rscratch1, rscratch1);
@@ -1673,7 +1659,7 @@ void LIR_Assembler::type_profile_helper(Register mdo,
   for (uint i = 0; i < ReceiverTypeData::row_limit(); i++) {
     Label next_test;
     Address recv_addr(mdo, md->byte_offset_of_slot(data, ReceiverTypeData::receiver_offset(i)));
-    __ cmpptr(recv_addr, (intptr_t)NULL_WORD);
+    __ cmpptr(recv_addr, NULL_WORD);
     __ jccb(Assembler::notEqual, next_test);
     __ movptr(recv_addr, recv);
     __ movptr(Address(mdo, md->byte_offset_of_slot(data, ReceiverTypeData::receiver_count_offset(i))), DataLayout::counter_increment);
@@ -1725,7 +1711,7 @@ void LIR_Assembler::emit_typecheck_helper(LIR_OpTypeCheck *op, Label* success, L
 
   assert_different_registers(obj, k_RInfo, klass_RInfo);
 
-  __ cmpptr(obj, (int32_t)NULL_WORD);
+  __ cmpptr(obj, NULL_WORD);
   if (op->should_profile()) {
     Label not_null;
     __ jccb(Assembler::notEqual, not_null);
@@ -1871,7 +1857,7 @@ void LIR_Assembler::emit_opTypeCheck(LIR_OpTypeCheck* op) {
     Label *success_target = op->should_profile() ? &profile_cast_success : &done;
     Label *failure_target = op->should_profile() ? &profile_cast_failure : stub->entry();
 
-    __ cmpptr(value, (int32_t)NULL_WORD);
+    __ cmpptr(value, NULL_WORD);
     if (op->should_profile()) {
       Label not_null;
       __ jccb(Assembler::notEqual, not_null);
@@ -1967,7 +1953,7 @@ void LIR_Assembler::emit_compare_and_swap(LIR_OpCompareAndSwap* op) {
     Register newval = op->new_value()->as_register();
     Register cmpval = op->cmp_value()->as_register();
     assert(cmpval == rax, "wrong register");
-    assert(newval != NULL, "new val must be register");
+    assert(newval != noreg, "new val must be register");
     assert(cmpval != newval, "cmp and new values must be in different registers");
     assert(cmpval != addr, "cmp and addr must be in different registers");
     assert(newval != addr, "new value and addr must be in different registers");
@@ -1998,7 +1984,7 @@ void LIR_Assembler::emit_compare_and_swap(LIR_OpCompareAndSwap* op) {
     Register newval = op->new_value()->as_register_lo();
     Register cmpval = op->cmp_value()->as_register_lo();
     assert(cmpval == rax, "wrong register");
-    assert(newval != NULL, "new val must be register");
+    assert(newval != noreg, "new val must be register");
     assert(cmpval != newval, "cmp and new values must be in different registers");
     assert(cmpval != addr, "cmp and addr must be in different registers");
     assert(newval != addr, "new value and addr must be in different registers");
@@ -2010,7 +1996,10 @@ void LIR_Assembler::emit_compare_and_swap(LIR_OpCompareAndSwap* op) {
   }
 }
 
-void LIR_Assembler::cmove(LIR_Condition condition, LIR_Opr opr1, LIR_Opr opr2, LIR_Opr result, BasicType type) {
+void LIR_Assembler::cmove(LIR_Condition condition, LIR_Opr opr1, LIR_Opr opr2, LIR_Opr result, BasicType type,
+                          LIR_Opr cmp_opr1, LIR_Opr cmp_opr2) {
+  assert(cmp_opr1 == LIR_OprFact::illegalOpr && cmp_opr2 == LIR_OprFact::illegalOpr, "unnecessary cmp oprs on x86");
+
   Assembler::Condition acond, ncond;
   switch (condition) {
     case lir_cond_equal:        acond = Assembler::equal;        ncond = Assembler::notEqual;     break;
@@ -2268,7 +2257,7 @@ void LIR_Assembler::arith_op(LIR_Code code, LIR_Opr left, LIR_Opr right, LIR_Opr
         raddr = frame_map()->address_for_slot(right->single_stack_ix());
       } else if (right->is_constant()) {
         address const_addr = float_constant(right->as_jfloat());
-        assert(const_addr != NULL, "incorrect float/double constant maintainance");
+        assert(const_addr != NULL, "incorrect float/double constant maintenance");
         // hack for now
         raddr = __ as_Address(InternalAddress(const_addr));
       } else {
@@ -2674,7 +2663,7 @@ void LIR_Assembler::comp_op(LIR_Condition condition, LIR_Opr opr1, LIR_Opr opr2,
         assert(condition == lir_cond_equal || condition == lir_cond_notEqual, "oops");
         Metadata* m = c->as_metadata();
         if (m == NULL) {
-          __ cmpptr(reg1, (int32_t)0);
+          __ cmpptr(reg1, NULL_WORD);
         } else {
           ShouldNotReachHere();
         }
@@ -2682,7 +2671,7 @@ void LIR_Assembler::comp_op(LIR_Condition condition, LIR_Opr opr1, LIR_Opr opr2,
         // In 64bit oops are single register
         jobject o = c->as_jobject();
         if (o == NULL) {
-          __ cmpptr(reg1, (int32_t)NULL_WORD);
+          __ cmpptr(reg1, NULL_WORD);
         } else {
           __ cmpoop(reg1, o);
         }
@@ -2875,6 +2864,7 @@ void LIR_Assembler::call(LIR_OpJavaCall* op, relocInfo::relocType rtype) {
          "must be aligned");
   __ call(AddressLiteral(op->addr(), rtype));
   add_call_info(code_offset(), op->info());
+  __ post_call_nop();
 }
 
 
@@ -2883,6 +2873,7 @@ void LIR_Assembler::ic_call(LIR_OpJavaCall* op) {
   add_call_info(code_offset(), op->info());
   assert((__ offset() - NativeCall::instruction_size + NativeCall::displacement_offset) % BytesPerWord == 0,
          "must be aligned");
+  __ post_call_nop();
 }
 
 
@@ -3503,6 +3494,10 @@ void LIR_Assembler::emit_lock(LIR_OpLock* op) {
   Register hdr = op->hdr_opr()->as_register();
   Register lock = op->lock_opr()->as_register();
   if (UseHeavyMonitors) {
+    if (op->info() != NULL) {
+      add_debug_info_for_null_check_here(op->info());
+      __ null_check(obj);
+    }
     __ jmp(*op->stub()->entry());
   } else if (op->code() == lir_lock) {
     assert(BasicLock::displaced_header_offset_in_bytes() == 0, "lock_reg must point to the displaced header");
@@ -3651,7 +3646,7 @@ void LIR_Assembler::emit_profile_type(LIR_OpProfileType* op) {
   } else {
     __ testptr(tmp, tmp);
     __ jcc(Assembler::notZero, update);
-    __ stop("unexpect null obj");
+    __ stop("unexpected null obj");
 #endif
   }
 
@@ -3879,6 +3874,7 @@ void LIR_Assembler::rt_call(LIR_Opr result, address dest, const LIR_OprList* arg
   if (info != NULL) {
     add_call_info_here(info);
   }
+  __ post_call_nop();
 }
 
 

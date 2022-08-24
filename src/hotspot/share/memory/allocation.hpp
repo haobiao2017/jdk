@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2022, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -77,7 +77,7 @@ typedef AllocFailStrategy::AllocFailEnum AllocFailType;
 // destructor are not called. The preferable way to allocate objects
 // is using the new operator.
 //
-// WARNING: The array variant must only be used for a homogenous array
+// WARNING: The array variant must only be used for a homogeneous array
 // where all objects are of the exact type specified. If subtypes are
 // stored in the array then must pay attention to calling destructors
 // at needed.
@@ -97,24 +97,6 @@ typedef AllocFailStrategy::AllocFailEnum AllocFailType;
 // char* ReallocateHeap(char *old, size_t size, MEMFLAGS flag, AllocFailType alloc_failmode = AllocFailStrategy::EXIT_OOM);
 // void FreeHeap(void* p);
 //
-// In non product mode we introduce a super class for all allocation classes
-// that supports printing.
-// We avoid the superclass in product mode to save space.
-
-#ifdef PRODUCT
-#define ALLOCATION_SUPER_CLASS_SPEC
-#else
-#define ALLOCATION_SUPER_CLASS_SPEC : public AllocatedObj
-class AllocatedObj {
- public:
-  // Printing support
-  void print() const;
-  void print_value() const;
-
-  virtual void print_on(outputStream* st) const;
-  virtual void print_value_on(outputStream* st) const;
-};
-#endif
 
 #define MEMORY_TYPES_DO(f)                                                           \
   /* Memory type by sub systems. It occupies lower byte. */                          \
@@ -146,6 +128,7 @@ class AllocatedObj {
   f(mtServiceability, "Serviceability")                                              \
   f(mtMetaspace,      "Metaspace")                                                   \
   f(mtStringDedup,    "String Deduplication")                                        \
+  f(mtObjectMonitor,  "Object Monitors")                                             \
   f(mtNone,           "Unknown")                                                     \
   //end
 
@@ -170,15 +153,7 @@ MEMORY_TYPES_DO(MEMORY_TYPE_SHORTNAME)
 // Make an int version of the sentinel end value.
 constexpr int mt_number_of_types = static_cast<int>(MEMFLAGS::mt_number_of_types);
 
-#if INCLUDE_NMT
-
 extern bool NMT_track_callsite;
-
-#else
-
-const bool NMT_track_callsite = false;
-
-#endif // INCLUDE_NMT
 
 class NativeCallStack;
 
@@ -199,7 +174,7 @@ char* ReallocateHeap(char *old,
 // handles NULL pointers
 void FreeHeap(void* p);
 
-template <MEMFLAGS F> class CHeapObj ALLOCATION_SUPER_CLASS_SPEC {
+template <MEMFLAGS F> class CHeapObj {
  public:
   ALWAYSINLINE void* operator new(size_t size) throw() {
     return (void*)AllocateHeap(size, F);
@@ -244,7 +219,7 @@ template <MEMFLAGS F> class CHeapObj ALLOCATION_SUPER_CLASS_SPEC {
 // Base class for objects allocated on the stack only.
 // Calling new or delete will result in fatal error.
 
-class StackObj ALLOCATION_SUPER_CLASS_SPEC {
+class StackObj {
  private:
   void* operator new(size_t size) throw();
   void* operator new [](size_t size) throw();
@@ -393,7 +368,7 @@ extern void resource_free_bytes( char *old, size_t size );
 // ResourceObj's can be allocated within other objects, but don't use
 // new or delete (allocation_type is unknown).  If new is used to allocate,
 // use delete to deallocate.
-class ResourceObj ALLOCATION_SUPER_CLASS_SPEC {
+class ResourceObj {
  public:
   enum allocation_type { STACK_OR_EMBEDDED = 0, RESOURCE_AREA, C_HEAP, ARENA, allocation_mask = 0x3 };
   static void set_allocation_type(address res, allocation_type type) NOT_DEBUG_RETURN;
@@ -445,6 +420,12 @@ protected:
   void* operator new [](size_t size, const std::nothrow_t& nothrow_constant) throw() = delete;
   void  operator delete(void* p);
   void  operator delete [](void* p) = delete;
+
+#ifndef PRODUCT
+  // Printing support
+  void print() const;
+  virtual void print_on(outputStream* st) const;
+#endif // PRODUCT
 };
 
 // One of the following macros must be used when allocating an array
@@ -556,7 +537,7 @@ class ArrayAllocator : public AllStatic {
   static void free(E* addr, size_t length);
 };
 
-// Uses mmaped memory for all allocations. All allocations are initially
+// Uses mmapped memory for all allocations. All allocations are initially
 // zero-filled. No pre-touching.
 template <class E>
 class MmapArrayAllocator : public AllStatic {
